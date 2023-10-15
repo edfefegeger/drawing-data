@@ -5,6 +5,8 @@ import pytesseract
 
 # Установите путь к исполняемому файлу Tesseract OCR (если он не находится в системном PATH)
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
+# Загрузите все шрифты
 font_paths = ['fonts/arial.ttf', 'fonts/GOST_EE.ttf', 'fonts/GOST.TTF', 'fonts/GOST_SLIDE.ttf', 'fonts/BGOST.ttf']
 fonts = [ImageFont.truetype(font_path, 36, encoding="unic") for font_path in font_paths]
 
