@@ -2,7 +2,6 @@ import os
 import fitz
 from PIL import Image, ImageDraw, ImageFont
 import pytesseract
-from googletrans import Translator
 
 # Установите путь к исполняемому файлу Tesseract OCR (если он не находится в системном PATH)
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
@@ -13,37 +12,25 @@ font_paths = [
     'fonts/GOST_EE.ttf',
     'fonts/GOST.TTF',
     'fonts/GOST_SLIDE.ttf',
-    'fonts/BGOST.ttf',
-    'fonts/your_custom_font.ttf',  # Путь к вашему собственному шрифту
+    'fonts/BGOST.ttf'
 ]
 
-def translate_text(text):
-    translator = Translator()
-    translated_texts = [text]  # По умолчанию, оригинальный текст остается в списке
-    try:
-        translations = translator.translate(text, src='auto', dest='en')  # Перевести в английский
-        translated_texts.append(translations.text)
-    except Exception as e:
-        print(f"Ошибка перевода на английский: {e}")
-    
-    return translated_texts
-
 def find_and_replace_text(img, search_texts, new_code, file_count):
-    recognized_data = pytesseract.image_to_data(img, lang='eng+rus', output_type=pytesseract.Output.DICT)
+    recognized_data = pytesseract.image_to_data(img, lang='en+rus', output_type=pytesseract.Output.DICT)
     draw = ImageDraw.Draw(img)
     n_boxes = len(recognized_data['text'])
     font_path = font_paths[file_count % len(font_paths)]
-    font = ImageFont.truetype(font_path, 36, encoding="unic")
+    font = ImageFont.truetype(font_path, 20, encoding="unic")
     replaced = False  # Флаг, который указывает, были ли внесены изменения
 
     for i in range(n_boxes):
         text = recognized_data['text'][i]
         conf = int(recognized_data['conf'][i])
         for search_text in search_texts:
-            if conf > 0 and search_text in text:
+            if conf > -1000 and search_text in text:
                 (x, y, w, h) = (recognized_data['left'][i], recognized_data['top'][i], recognized_data['width'][i], recognized_data['height'][i])
-                # Нарисовать прямоугольник вокруг найденного текста с желтым контуром
-                draw.rectangle([(x, y), (x + w, y + h)], outline="yellow", width=3)
+                # Нарисовать прямоугольник вокруг найденного текста с белым заливкой
+                draw.rectangle([(x, y), (x + w, y + h)], outline="white", width=3, fill="white")
                 new_text = f"{new_code}-{file_count}"
                 draw.text((x, y), new_text, font=font, fill="black")
                 replaced = True
@@ -79,7 +66,6 @@ def process_pdf(pdf_path, search_texts, new_code, output_folder, file_count):
 def main(input_folder, output_folder):
     os.makedirs(output_folder, exist_ok=True)
     search_text = input("Введите текст для поиска: ")
-    translated_texts = translate_text(search_text)
     new_code = input("Введите новый шифр для замены: ")
     file_count = 1
     modified = False
@@ -91,15 +77,14 @@ def main(input_folder, output_folder):
         if file_name.lower().endswith((".jpg", ".png")):
             img = Image.open(input_path)
             processed_img = img.copy()  # Создаем копию изображения для обработки
-            process_image(processed_img, translated_texts, new_code, file_count)
+            processed_img, text_replaced, file_count = process_image(processed_img, [search_text], new_code, file_count)
 
-            if processed_img.tobytes() != img.tobytes():  # Проверяем, были ли изменения
+            if text_replaced:
                 modified = True
                 processed_img.save(output_path)
-                file_count += 1
 
         elif file_name.lower().endswith((".pdf")):
-            file_count = process_pdf(input_path, translated_texts, new_code, output_folder, file_count)
+            file_count = process_pdf(input_path, [search_text], new_code, output_folder, file_count)
             modified = True
 
     if modified:
