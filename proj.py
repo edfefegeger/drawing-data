@@ -56,9 +56,9 @@ def process_pdf(pdf_path, search_texts, new_code, output_folder, file_count):
         page = pdf_document[page_number]
         page_pixmap = page.get_pixmap()
         img = Image.frombytes("RGB", [page_pixmap.width, page_pixmap.height], page_pixmap.samples)
-        process_image(img, search_texts, new_code, file_count)
+        img, text_replaced, file_count = process_image(img, search_texts, new_code, file_count)
 
-        image_filename = os.path.join(output_folder, f"page_{page_number + 1}.png")
+        image_filename = os.path.join(output_folder, f"page_{file_count}.png")
         img.save(image_filename)
 
     return file_count
@@ -81,7 +81,8 @@ def main(input_folder, output_folder):
 
             if text_replaced:
                 modified = True
-                processed_img.save(output_path)
+                output_filename = os.path.join(output_folder, f"{file_count}.png")
+                processed_img.save(output_filename)
 
         elif file_name.lower().endswith((".pdf")):
             file_count = process_pdf(input_path, [search_text], new_code, output_folder, file_count)
