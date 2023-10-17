@@ -2,11 +2,10 @@ import os
 import fitz
 from PIL import Image, ImageDraw, ImageFont
 import pytesseract
-
-# Установите путь к исполняемому файлу Tesseract OCR (если он не находится в системном PATH)
+import easyocr
+import numpy as np
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
-# Загрузите все шрифты, включая специальные шрифты для текста в наклоне
 font_paths = [
     'fonts/arial.ttf',
     'fonts/GOST_EE.ttf',
@@ -15,25 +14,31 @@ font_paths = [
     'fonts/BGOST.ttf'
 ]
 
-def find_and_replace_text(img, search_texts, new_code, file_count):
-    recognized_data = pytesseract.image_to_data(img, lang='en+rus', output_type=pytesseract.Output.DICT)
-    draw = ImageDraw.Draw(img)
-    n_boxes = len(recognized_data['text'])
-    font_path = font_paths[file_count % len(font_paths)]
-    font = ImageFont.truetype(font_path, 20, encoding="unic")
-    replaced = False  # Флаг, который указывает, были ли внесены изменения
+def resize_image(img, target_width=1920, target_height=1080):
+    width, height = img.size
+    if width > target_width or height > target_height:
+        img = img.resize((target_width, target_height))
+    return img
 
-    for i in range(n_boxes):
-        text = recognized_data['text'][i]
-        conf = int(recognized_data['conf'][i])
+def find_and_replace_text(img, search_texts, new_code, file_count):
+    reader = easyocr.Reader(['en', 'ru'], gpu=False)  # Используйте нужные языки для распознавания
+    bounds = reader.readtext(np.array(img))
+    draw = ImageDraw.Draw(img)  # Определение draw в этой функции
+    replaced = False
+
+    for bound in bounds:
+        text = bound[1]
         for search_text in search_texts:
-            if conf > -1000 and search_text in text:
-                (x, y, w, h) = (recognized_data['left'][i], recognized_data['top'][i], recognized_data['width'][i], recognized_data['height'][i])
+            if search_text in text:
+                # Получите координаты текста
+                box = bound[0]
+                (x, y, w, h) = box[0][0], box[0][1], box[2][0] - box[0][0], box[2][1] - box[0][1]
                 # Нарисовать прямоугольник вокруг найденного текста с белым заливкой
                 draw.rectangle([(x, y), (x + w, y + h)], outline="white", width=3, fill="white")
                 new_text = f"{new_code}-{file_count}"
-                draw.text((x, y), new_text, font=font, fill="black")
+                draw.text((x, y), new_text, fill="black")
                 replaced = True
+                break  # Прерываем цикл, чтобы заменить только первое вхождение
 
     if replaced:
         file_count += 1
@@ -41,13 +46,11 @@ def find_and_replace_text(img, search_texts, new_code, file_count):
     return img, replaced, file_count
 
 
-def process_image(img, search_texts, new_code, file_count):
-    replaced = False
-    for search_text in search_texts:
-        img, text_replaced, file_count = find_and_replace_text(img, [search_text], new_code, file_count)
-        replaced = replaced or text_replaced
-    return img, replaced, file_count
 
+def process_image(img, search_texts, new_code, file_count):
+    resized_img = resize_image(img)
+    resized_img, text_replaced, file_count = find_and_replace_text(resized_img, search_texts, new_code, file_count)
+    return resized_img, text_replaced, file_count
 
 def process_pdf(pdf_path, search_texts, new_code, output_folder, file_count):
     pdf_document = fitz.open(pdf_path)
@@ -56,10 +59,11 @@ def process_pdf(pdf_path, search_texts, new_code, output_folder, file_count):
         page = pdf_document[page_number]
         page_pixmap = page.get_pixmap()
         img = Image.frombytes("RGB", [page_pixmap.width, page_pixmap.height], page_pixmap.samples)
-        img, text_replaced, file_count = process_image(img, search_texts, new_code, file_count)
+        resized_img, text_replaced, file_count = process_image(img, search_texts, new_code, file_count)
 
-        image_filename = os.path.join(output_folder, f"page_{file_count}.png")
-        img.save(image_filename)
+        if text_replaced:
+            image_filename = os.path.join(output_folder, f"page_{file_count}.png")
+            resized_img.save(image_filename)
 
     return file_count
 
@@ -76,8 +80,7 @@ def main(input_folder, output_folder):
 
         if file_name.lower().endswith((".jpg", ".png")):
             img = Image.open(input_path)
-            processed_img = img.copy()  # Создаем копию изображения для обработки
-            processed_img, text_replaced, file_count = process_image(processed_img, [search_text], new_code, file_count)
+            processed_img, text_replaced, file_count = process_image(img, [search_text], new_code, file_count)
 
             if text_replaced:
                 modified = True
